@@ -14,7 +14,7 @@ type Slot = {
 const ADMIN_EMAIL = 'admin@agenda.com'
 
 // funzione per generare slot futuri gestendo DST
-const generateFutureSlots = async (monthsAhead: number = 12) => {
+const generateFutureSlots = async (monthsAhead: number = 6) => {
   const startDate = new Date()
   const endDate = new Date()
   endDate.setMonth(endDate.getMonth() + monthsAhead)
@@ -24,7 +24,6 @@ const generateFutureSlots = async (monthsAhead: number = 12) => {
   for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
     for (let h = 8; h < 17; h++) {
       for (let m = 0; m < 60; m += 30) {
-        // genera slot in UTC per evitare problemi DST
         const start = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), h, m))
         const end = new Date(start.getTime() + 30 * 60000)
         slotsToInsert.push({
@@ -35,7 +34,6 @@ const generateFutureSlots = async (monthsAhead: number = 12) => {
     }
   }
 
-  // recupera slot già esistenti
   const { data: existingSlots } = await supabase
     .from('slots')
     .select('start_time')
@@ -51,12 +49,35 @@ const generateFutureSlots = async (monthsAhead: number = 12) => {
   if (error) console.error('Errore generazione slot futuri:', error)
 }
 
+// ottieni i prossimi 7 giorni a partire da oggi
+const getWeekFromToday = (slots: Slot[]) => {
+  if (!slots.length) return []
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  const week: Slot[][] = []
+
+  for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
+    const currentDay = new Date(today)
+    currentDay.setDate(today.getDate() + dayOffset)
+
+    const daySlots = slots.filter(slot => {
+      const slotDate = new Date(slot.start_time)
+      return slotDate.toDateString() === currentDay.toDateString()
+    })
+
+    week.push(daySlots)
+  }
+
+  return week
+}
+
 export default function CalendarPage() {
   const [slots, setSlots] = useState<Slot[]>([])
   const [user, setUser] = useState<any>(null)
   const [emailInput, setEmailInput] = useState('')
   const [passwordInput, setPasswordInput] = useState('')
-  const [currentWeekIndex, setCurrentWeekIndex] = useState(0)
 
   const isAdmin = user?.email === ADMIN_EMAIL
 
@@ -96,7 +117,6 @@ export default function CalendarPage() {
     setupSlots()
   }, [])
 
-  // prenotazione utente normale
   const bookSlot = async (slot: Slot) => {
     if (slot.booked_by) return alert('Slot già prenotato!')
     const name = prompt('Inserisci il tuo nome:') || ''
@@ -111,7 +131,6 @@ export default function CalendarPage() {
     else setSlots(slots.map(s => (s.id === slot.id ? { ...s, booked_by: name, notes: note } : s)))
   }
 
-  // edit slot admin
   const editSlot = async (slot: Slot) => {
     const name = prompt('Nome:', slot.booked_by || '') || slot.booked_by
     const note = prompt('Note:', slot.notes || '') || slot.notes
@@ -125,7 +144,6 @@ export default function CalendarPage() {
     else setSlots(slots.map(s => (s.id === slot.id ? { ...s, booked_by: name, notes: note } : s)))
   }
 
-  // clear slot admin
   const clearSlot = async (slot: Slot) => {
     const { error } = await supabase
       .from('slots')
@@ -136,39 +154,11 @@ export default function CalendarPage() {
     else setSlots(slots.map(s => (s.id === slot.id ? { ...s, booked_by: null, notes: null } : s)))
   }
 
-  // suddivisione in settimane
-  const getWeeks = (slots: Slot[]) => {
-    const weeks: Slot[][][] = []
-    if (!slots.length) return weeks
-    const sortedSlots = slots.slice().sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())
-    let currentWeek: Slot[][] = []
-    let currentDay: Slot[] = []
-    let currentDate = new Date(sortedSlots[0].start_time).toDateString()
-    for (const slot of sortedSlots) {
-      const slotDate = new Date(slot.start_time).toDateString()
-      if (slotDate !== currentDate) {
-        currentWeek.push(currentDay)
-        currentDay = []
-        currentDate = slotDate
-        if (currentWeek.length === 7) {
-          weeks.push(currentWeek)
-          currentWeek = []
-        }
-      }
-      currentDay.push(slot)
-    }
-    if (currentDay.length) currentWeek.push(currentDay)
-    if (currentWeek.length) weeks.push(currentWeek)
-    return weeks
-  }
-
-  const weeks = getWeeks(slots)
-  const prevWeek = () => setCurrentWeekIndex(i => Math.max(i - 1, 0))
-  const nextWeek = () => setCurrentWeekIndex(i => Math.min(i + 1, weeks.length - 1))
+  const week = getWeekFromToday(slots)
 
   return (
     <div style={{ padding: 20 }}>
-      <h1>Agenda</h1>
+      <h1>Agenda fino al 31/12/2026</h1>
 
       {!user && (
         <form onSubmit={handleLogin} style={{ marginBottom: 20 }}>
@@ -199,15 +189,11 @@ export default function CalendarPage() {
         </div>
       )}
 
-      <div style={{ marginBottom: 10 }}>
-        <button onClick={prevWeek} disabled={currentWeekIndex === 0}>← Settimana precedente</button>
-        <button onClick={nextWeek} disabled={currentWeekIndex === weeks.length - 1} style={{ marginLeft: 10 }}>Settimana successiva →</button>
-      </div>
-
       <div style={{ display: 'flex', overflowX: 'auto' }}>
-        {weeks[currentWeekIndex]?.map((daySlots, dayIndex) => (
+        {week.map((daySlots, dayIndex) => (
           <div key={dayIndex} style={{ minWidth: 150, marginRight: 10 }}>
-            <h4>{new Date(daySlots[0].start_time).toLocaleDateString()}</h4>
+            <h4>{daySlots[0] ? new Date(daySlots[0].start_time).toLocaleDateString() :
+                 new Date(Date.now() + dayIndex * 86400000).toLocaleDateString()}</h4>
             {daySlots.map(slot => (
               <div key={slot.id} style={{
                 background: slot.booked_by ? '#ff6b6b' : '#51cf66',
