@@ -40,42 +40,60 @@ export default function CalendarPage() {
 
       <h1>Agenda</h1>
 
-      {slots.map(slot => {
+      {slots.map((slot) => {
 
-        const color =
-          slot.booked_by ? '#ff6b6b' : '#51cf66'
+  const color = slot.booked_by ? '#ff6b6b' : '#51cf66'
 
-        return (
+  const handleClick = async () => {
 
-          <div
-            key={slot.id}
-            style={{
-              background: color,
-              padding: "10px",
-              margin: "5px",
-              borderRadius: "6px"
-            }}
-          >
+    if (slot.booked_by) {
+      alert("Slot già prenotato!")
+      return
+    }
 
-            <strong>
-              {new Date(slot.start_time).toLocaleString()}
-            </strong>
+    const name = prompt("Inserisci il tuo nome:")
+    if (!name) return
 
-            {" → "}
+    const note = prompt("Inserisci eventuale nota (opzionale):") || null
 
-            {new Date(slot.end_time).toLocaleTimeString()}
+    const { data, error } = await supabase
+      .from('slots')
+      .update({ booked_by: name, notes: note })
+      .eq('id', slot.id)
 
-            {slot.notes && (
-              <div>
-                note: {slot.notes}
-              </div>
-            )}
+    if (error) {
+      console.error(error)
+      alert("Errore nella prenotazione")
+    } else {
+      setSlots(slots.map(s => s.id === slot.id ? { ...s, booked_by: name, notes: note } : s))
+    }
 
-          </div>
+  }
 
-        )
+  return (
+    <div
+      key={slot.id}
+      onClick={handleClick}
+      style={{
+        background: color,
+        padding: "10px",
+        margin: "5px",
+        borderRadius: "6px",
+        cursor: slot.booked_by ? "not-allowed" : "pointer"
+      }}
+    >
 
-      })}
+      <strong>{new Date(slot.start_time).toLocaleString()}</strong>
+      {" → "}
+      {new Date(slot.end_time).toLocaleTimeString()}
+
+      {slot.notes && <div>note: {slot.notes}</div>}
+
+    </div>
+  )
+
+})}
+
 
     </div>
   )
