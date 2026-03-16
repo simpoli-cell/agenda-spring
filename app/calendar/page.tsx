@@ -13,7 +13,7 @@ type Slot = {
 
 const ADMIN_EMAIL = 'admin@agenda.com'
 
-// funzione per generare slot futuri gestendo DST
+// genera slot futuri (UTC per DST)
 const generateFutureSlots = async (monthsAhead: number = 6) => {
   const startDate = new Date()
   const endDate = new Date()
@@ -26,10 +26,7 @@ const generateFutureSlots = async (monthsAhead: number = 6) => {
       for (let m = 0; m < 60; m += 30) {
         const start = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), h, m))
         const end = new Date(start.getTime() + 30 * 60000)
-        slotsToInsert.push({
-          start_time: start.toISOString(),
-          end_time: end.toISOString()
-        })
+        slotsToInsert.push({ start_time: start.toISOString(), end_time: end.toISOString() })
       }
     }
   }
@@ -49,24 +46,19 @@ const generateFutureSlots = async (monthsAhead: number = 6) => {
   if (error) console.error('Errore generazione slot futuri:', error)
 }
 
-// ottieni i prossimi 7 giorni a partire da oggi
-const getWeekFromToday = (slots: Slot[]) => {
-  if (!slots.length) return []
-
+// ottieni settimana di 7 giorni a partire dall’indice
+const getWeekByIndex = (slots: Slot[], index: number) => {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
+  const startDay = new Date(today)
+  startDay.setDate(today.getDate() + index * 7)
 
   const week: Slot[][] = []
 
-  for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
-    const currentDay = new Date(today)
-    currentDay.setDate(today.getDate() + dayOffset)
-
-    const daySlots = slots.filter(slot => {
-      const slotDate = new Date(slot.start_time)
-      return slotDate.toDateString() === currentDay.toDateString()
-    })
-
+  for (let i = 0; i < 7; i++) {
+    const day = new Date(startDay)
+    day.setDate(startDay.getDate() + i)
+    const daySlots = slots.filter(s => new Date(s.start_time).toDateString() === day.toDateString())
     week.push(daySlots)
   }
 
@@ -78,6 +70,7 @@ export default function CalendarPage() {
   const [user, setUser] = useState<any>(null)
   const [emailInput, setEmailInput] = useState('')
   const [passwordInput, setPasswordInput] = useState('')
+  const [weekIndex, setWeekIndex] = useState(0)
 
   const isAdmin = user?.email === ADMIN_EMAIL
 
@@ -105,7 +98,7 @@ export default function CalendarPage() {
       const { data: { session } } = await supabase.auth.getSession()
       setUser(session?.user || null)
 
-      await generateFutureSlots(12) // genera 12 mesi avanti se mancanti
+      await generateFutureSlots(12)
 
       const { data, error } = await supabase
         .from('slots')
@@ -117,6 +110,7 @@ export default function CalendarPage() {
     setupSlots()
   }, [])
 
+  // prenotazione utente normale
   const bookSlot = async (slot: Slot) => {
     if (slot.booked_by) return alert('Slot già prenotato!')
     const name = prompt('Inserisci il tuo nome:') || ''
@@ -154,7 +148,7 @@ export default function CalendarPage() {
     else setSlots(slots.map(s => (s.id === slot.id ? { ...s, booked_by: null, notes: null } : s)))
   }
 
-  const week = getWeekFromToday(slots)
+  const week = getWeekByIndex(slots, weekIndex)
 
   return (
     <div style={{ padding: 20 }}>
@@ -189,11 +183,18 @@ export default function CalendarPage() {
         </div>
       )}
 
+      {/* pulsanti navigazione settimane */}
+      <div style={{ marginBottom: 10 }}>
+        <button onClick={() => setWeekIndex(w => Math.max(w - 1, 0))} disabled={weekIndex === 0}>← Settimana precedente</button>
+        <button onClick={() => setWeekIndex(w => w + 1)} style={{ marginLeft: 10 }}>Settimana successiva →</button>
+      </div>
+
+      {/* griglia settimana */}
       <div style={{ display: 'flex', overflowX: 'auto' }}>
         {week.map((daySlots, dayIndex) => (
           <div key={dayIndex} style={{ minWidth: 150, marginRight: 10 }}>
             <h4>{daySlots[0] ? new Date(daySlots[0].start_time).toLocaleDateString() :
-                 new Date(Date.now() + dayIndex * 86400000).toLocaleDateString()}</h4>
+                 new Date(Date.now() + (weekIndex * 7 + dayIndex) * 86400000).toLocaleDateString()}</h4>
             {daySlots.map(slot => (
               <div key={slot.id} style={{
                 background: slot.booked_by ? '#ff6b6b' : '#51cf66',
