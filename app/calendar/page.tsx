@@ -22,7 +22,7 @@ const generateFutureSlots = async (monthsAhead: number = 12) => {
   const slotsToInsert: { start_time: string; end_time: string }[] = []
 
   for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-    for (let h = 9; h < 17; h++) {
+    for (let h = 8; h < 17; h++) {
       for (let m = 0; m < 60; m += 30) {
         // genera slot in UTC per evitare problemi DST
         const start = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), h, m))
@@ -168,7 +168,7 @@ export default function CalendarPage() {
 
   return (
     <div style={{ padding: 20 }}>
-      <h1>Agenda fino al 31/12/2026</h1>
+      <h1>Agenda</h1>
 
       {!user && (
         <form onSubmit={handleLogin} style={{ marginBottom: 20 }}>
