@@ -47,7 +47,7 @@ export default function CalendarPage() {
   const handleClick = async (slot: Slot) => {
 
     // utente normale
-    if (!user || user.email !== 'admin@tuoemail.com') {
+    if (!user || user.email !== 'admin@agenda.com') {
       if (slot.booked_by) {
         alert("Slot già prenotato!")
         return
