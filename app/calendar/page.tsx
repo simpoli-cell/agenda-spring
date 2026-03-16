@@ -18,11 +18,11 @@ export default function CalendarPage() {
   const [user, setUser] = useState<any>(null)
   const router = useRouter()
 
-  // recupera utente loggato
+  // recupera utente loggato o sessione persistente
   useEffect(() => {
     const fetchUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser()
-      setUser(user)
+      const { data: { session } } = await supabase.auth.getSession()
+      setUser(session?.user || null)
     }
     fetchUser()
   }, [])
@@ -43,7 +43,7 @@ export default function CalendarPage() {
     fetchSlots()
   }, [])
 
-  // gestione click su uno slot
+  // gestione click su slot
   const handleClick = async (slot: Slot) => {
 
     // utente normale
@@ -71,7 +71,25 @@ export default function CalendarPage() {
       return
     }
 
-    // admin → può modificare qualsiasi slot
+    // admin → prompt per azione
+    const action = prompt("Scrivi 'edit' per modificare o 'clear' per svuotare lo slot:", "edit")
+    if (!action) return
+
+    if (action.toLowerCase() === "clear") {
+      const { error } = await supabase
+        .from('slots')
+        .update({ booked_by: null, notes: null })
+        .eq('id', slot.id)
+      if (error) {
+        alert("Errore nel pulire lo slot")
+        console.error(error)
+        return
+      }
+      setSlots(slots.map(s => s.id === slot.id ? { ...s, booked_by: null, notes: null } : s))
+      return
+    }
+
+    // edit normale
     const name = prompt("Nome:", slot.booked_by || "") || slot.booked_by
     const note = prompt("Note:", slot.notes || "") || slot.notes
 
@@ -95,7 +113,6 @@ export default function CalendarPage() {
       <p>{user ? `Loggato come: ${user.email}` : "Utente anonimo"}</p>
 
       {slots.map(slot => {
-
         const color = slot.booked_by ? '#ff6b6b' : '#51cf66'
 
         return (
@@ -107,14 +124,18 @@ export default function CalendarPage() {
               padding: "10px",
               margin: "5px",
               borderRadius: "6px",
-              cursor: slot.booked_by && (!user || user.email !== 'admin@agenda.com') ? "not-allowed" : "pointer"
+              cursor: slot.booked_by && (!user || user.email !== 'admin@tuoemail.com') ? "not-allowed" : "pointer"
             }}
           >
             <strong>{new Date(slot.start_time).toLocaleString()}</strong> → {new Date(slot.end_time).toLocaleTimeString()}
-            
-            {slot.notes && user?.email === 'admin@agenda.com' && (
-              <div>note: {slot.notes}</div>
+
+            {user?.email === 'admin@tuoemail.com' && (
+              <div>
+                {slot.booked_by && <div>Utente: {slot.booked_by}</div>}
+                {slot.notes && <div>Note: {slot.notes}</div>}
+              </div>
             )}
+
           </div>
         )
       })}
