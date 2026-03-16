@@ -124,12 +124,12 @@ export default function CalendarPage() {
               padding: "10px",
               margin: "5px",
               borderRadius: "6px",
-              cursor: slot.booked_by && (!user || user.email !== 'admin@tuoemail.com') ? "not-allowed" : "pointer"
+              cursor: slot.booked_by && (!user || user.email !== 'admin@agenda.com') ? "not-allowed" : "pointer"
             }}
           >
             <strong>{new Date(slot.start_time).toLocaleString()}</strong> → {new Date(slot.end_time).toLocaleTimeString()}
 
-            {user?.email === 'admin@tuoemail.com' && (
+            {user?.email === 'admin@agenda.com' && (
               <div>
                 {slot.booked_by && <div>Utente: {slot.booked_by}</div>}
                 {slot.notes && <div>Note: {slot.notes}</div>}
