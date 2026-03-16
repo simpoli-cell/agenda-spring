@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabaseClient'
+import { useRouter } from 'next/navigation'
 
 type Slot = {
   id: string
@@ -14,87 +15,109 @@ type Slot = {
 export default function CalendarPage() {
 
   const [slots, setSlots] = useState<Slot[]>([])
+  const [user, setUser] = useState<any>(null)
+  const router = useRouter()
 
+  // recupera utente loggato
+  useEffect(() => {
+    const fetchUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser()
+      setUser(user)
+    }
+    fetchUser()
+  }, [])
+
+  // carica slot dal database
   useEffect(() => {
     const fetchSlots = async () => {
-
       const { data, error } = await supabase
         .from('slots')
         .select('*')
         .order('start_time')
-
       if (error) {
         console.error(error)
         return
       }
-
       setSlots(data || [])
     }
-
     fetchSlots()
-
   }, [])
 
-  return (
-    <div style={{padding:"40px"}}>
+  // gestione click su uno slot
+  const handleClick = async (slot: Slot) => {
 
-      <h1>Agenda</h1>
+    // utente normale
+    if (!user || user.email !== 'admin@tuoemail.com') {
+      if (slot.booked_by) {
+        alert("Slot già prenotato!")
+        return
+      }
+      const name = prompt("Inserisci il tuo nome:")  
+      if (!name) return
+      const note = prompt("Inserisci eventuale nota (opzionale):") || null
 
-      {slots.map((slot) => {
+      const { error } = await supabase
+        .from('slots')
+        .update({ booked_by: name, notes: note })
+        .eq('id', slot.id)
 
-  const color = slot.booked_by ? '#ff6b6b' : '#51cf66'
+      if (error) {
+        alert("Errore durante la prenotazione")
+        console.error(error)
+        return
+      }
 
-  const handleClick = async () => {
-
-    if (slot.booked_by) {
-      alert("Slot già prenotato!")
+      setSlots(slots.map(s => s.id === slot.id ? { ...s, booked_by: name, notes: note } : s))
       return
     }
 
-    const name = prompt("Inserisci il tuo nome:")
-    if (!name) return
+    // admin → può modificare qualsiasi slot
+    const name = prompt("Nome:", slot.booked_by || "") || slot.booked_by
+    const note = prompt("Note:", slot.notes || "") || slot.notes
 
-    const note = prompt("Inserisci eventuale nota (opzionale):") || null
-
-    const { data, error } = await supabase
+    const { error } = await supabase
       .from('slots')
       .update({ booked_by: name, notes: note })
       .eq('id', slot.id)
 
     if (error) {
+      alert("Errore durante l'aggiornamento")
       console.error(error)
-      alert("Errore nella prenotazione")
-    } else {
-      setSlots(slots.map(s => s.id === slot.id ? { ...s, booked_by: name, notes: note } : s))
+      return
     }
 
+    setSlots(slots.map(s => s.id === slot.id ? { ...s, booked_by: name, notes: note } : s))
   }
 
   return (
-    <div
-      key={slot.id}
-      onClick={handleClick}
-      style={{
-        background: color,
-        padding: "10px",
-        margin: "5px",
-        borderRadius: "6px",
-        cursor: slot.booked_by ? "not-allowed" : "pointer"
-      }}
-    >
+    <div style={{ padding: 40 }}>
+      <h1>Agenda slot</h1>
+      <p>{user ? `Loggato come: ${user.email}` : "Utente anonimo"}</p>
 
-      <strong>{new Date(slot.start_time).toLocaleString()}</strong>
-      {" → "}
-      {new Date(slot.end_time).toLocaleTimeString()}
+      {slots.map(slot => {
 
-      {slot.notes && <div>note: {slot.notes}</div>}
+        const color = slot.booked_by ? '#ff6b6b' : '#51cf66'
 
-    </div>
-  )
-
-})}
-
-
+        return (
+          <div
+            key={slot.id}
+            onClick={() => handleClick(slot)}
+            style={{
+              background: color,
+              padding: "10px",
+              margin: "5px",
+              borderRadius: "6px",
+              cursor: slot.booked_by && (!user || user.email !== 'admin@tuoemail.com') ? "not-allowed" : "pointer"
+            }}
+          >
+            <strong>{new Date(slot.start_time).toLocaleString()}</strong> → {new Date(slot.end_time).toLocaleTimeString()}
+            
+            {slot.notes && user?.email === 'admin@tuoemail.com' && (
+              <div>note: {slot.notes}</div>
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }
