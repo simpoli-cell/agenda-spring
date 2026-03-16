@@ -12,7 +12,7 @@ type Slot = {
 }
 
 // Costante admin
-const ADMIN_EMAIL = 'admin@tuoemail.com'
+const ADMIN_EMAIL = 'admin@agenda.com'
 
 export default function CalendarPage() {
 
