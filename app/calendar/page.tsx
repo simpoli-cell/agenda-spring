@@ -152,7 +152,7 @@ export default function CalendarPage() {
 
   return (
     <div style={{ padding: 20 }}>
-      <h1>Agenda fino al 31/12/2026</h1>
+      <h1>Agenda EAPT</h1>
 
       {!user && (
         <form onSubmit={handleLogin} style={{ marginBottom: 20 }}>
