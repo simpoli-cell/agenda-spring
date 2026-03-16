@@ -38,7 +38,7 @@ export default function CalendarPage() {
   return (
     <div style={{padding:"40px"}}>
 
-      <h1>Agenda slot</h1>
+      <h1>Agenda</h1>
 
       {slots.map(slot => {
 
