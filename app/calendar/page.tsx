@@ -13,8 +13,8 @@ type Slot = {
 
 const ADMIN_EMAIL = 'admin@agenda.com'
 
-// funzione per generare slot futuri
-const generateFutureSlots = async (monthsAhead: number = 2) => {
+// funzione per generare slot futuri gestendo DST
+const generateFutureSlots = async (monthsAhead: number = 12) => {
   const startDate = new Date()
   const endDate = new Date()
   endDate.setMonth(endDate.getMonth() + monthsAhead)
@@ -22,9 +22,10 @@ const generateFutureSlots = async (monthsAhead: number = 2) => {
   const slotsToInsert: { start_time: string; end_time: string }[] = []
 
   for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-    for (let h = 9; h < 18; h++) {
+    for (let h = 9; h < 17; h++) {
       for (let m = 0; m < 60; m += 30) {
-        const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m)
+        // genera slot in UTC per evitare problemi DST
+        const start = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), h, m))
         const end = new Date(start.getTime() + 30 * 60000)
         slotsToInsert.push({
           start_time: start.toISOString(),
@@ -42,7 +43,6 @@ const generateFutureSlots = async (monthsAhead: number = 2) => {
     .lte('start_time', endDate.toISOString())
 
   const existingStartTimes = new Set(existingSlots?.map(s => s.start_time))
-
   const newSlots = slotsToInsert.filter(s => !existingStartTimes.has(s.start_time))
 
   if (newSlots.length === 0) return
