@@ -255,11 +255,15 @@ export default function CalendarPage() {
                   {' - '}
                   {new Date(slot.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
+              {isAdmin && (
+                <>
 
-                {slot.struttura && <div>{slot.struttura}</div>}
-                {slot.nome_cognome && <div>{slot.nome_cognome}</div>}
-                {isAdmin && slot.scadenza && <div>Scadenza: {slot.scadenza}</div>}
+                  {slot.struttura && <div>{slot.struttura}</div>}
+                  {slot.nome_cognome && <div>{slot.nome_cognome}</div>}
+                  {slot.scadenza && <div>Scadenza: {slot.scadenza}</div>}
 
+                </>
+              )}
                 {isAdmin && slot.nome_cognome && (
                   <button
                     className="btn btn-secondary"
