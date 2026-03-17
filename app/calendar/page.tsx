@@ -29,9 +29,9 @@ const getWeekByIndex = (slots: Slot[], index: number) => {
     const day = new Date(startDay)
     day.setDate(startDay.getDate() + i)
 
-    const daySlots = slots.filter(s =>
-      new Date(s.start_time).toDateString() === day.toDateString()
-    )
+    const daySlots = slots?.filter(s =>
+      s?.start_time && new Date(s.start_time).toDateString() === day.toDateString()
+    ) || []
 
     week.push(daySlots)
   }
@@ -73,7 +73,6 @@ export default function CalendarPage() {
     setUser(null)
   }
 
-  // Fetch slot dalla tabella principale
   const fetchSlots = async () => {
     if (!user) return
     const { data, error } = await supabase
@@ -81,17 +80,16 @@ export default function CalendarPage() {
       .select('*')
       .order('start_time')
 
-      console.log('Fetch slots:', data, 'Error: ', error)
-
     if (error) {
       console.error('Errore fetch slots:', error.message)
       return
     }
 
-    if (!isAdmin && data) {
-      // utenti normali: nascondi dettagli, mostra solo orario e rosso se prenotato
+    const safeData = data || []
+
+    if (!isAdmin) {
       setSlots(
-        data.map((s: Slot) => ({
+        safeData.map((s: Slot) => ({
           ...s,
           struttura: null,
           nome_cognome: null,
@@ -100,7 +98,7 @@ export default function CalendarPage() {
         }))
       )
     } else {
-      setSlots(data)
+      setSlots(safeData)
     }
   }
 
@@ -119,6 +117,7 @@ export default function CalendarPage() {
   }, [user])
 
   const openForm = (slot: Slot) => {
+    if (!slot) return
     if (!isAdmin && (slot.user_id || slot.nome_cognome)) return
     setSelectedSlot(slot)
     setFormData({
@@ -153,7 +152,7 @@ export default function CalendarPage() {
   }
 
   const clearSlot = async (slot: Slot) => {
-    if (!isAdmin) return
+    if (!isAdmin || !slot) return
     const { error } = await supabase
       .from('slots')
       .update({
@@ -213,16 +212,18 @@ export default function CalendarPage() {
       </div>
 
       <div className="calendar">
-        {week.map((daySlots, dayIndex) => (
+        {week.map((daySlots = [], dayIndex) => (
           <div key={dayIndex} className="day-column">
             <div className={`day-header ${dayIndex === 0 ? 'today' : ''}`}>
-              {daySlots[0]
+              {daySlots[0]?.start_time
                 ? new Date(daySlots[0].start_time).toLocaleDateString()
                 : new Date(Date.now() + (weekIndex * 7 + dayIndex) * 86400000).toLocaleDateString()
               }
             </div>
 
             {daySlots.map(slot => {
+              if (!slot?.start_time || !slot?.end_time) return null
+
               const booked = !!slot.is_booked
 
               return (
