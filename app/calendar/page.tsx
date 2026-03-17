@@ -15,7 +15,6 @@ type Slot = {
 
 const ADMIN_EMAIL = 'admin@agenda.com'
 
-// settimana
 const getWeekByIndex = (slots: Slot[], index: number) => {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -42,12 +41,7 @@ const getWeekByIndex = (slots: Slot[], index: number) => {
 export default function CalendarPage() {
   const [slots, setSlots] = useState<Slot[]>([])
   const [user, setUser] = useState<any>(null)
-
-  const [emailInput, setEmailInput] = useState('')
-  const [passwordInput, setPasswordInput] = useState('')
-
   const [weekIndex, setWeekIndex] = useState(0)
-
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null)
 
   const [formData, setFormData] = useState({
@@ -56,19 +50,18 @@ export default function CalendarPage() {
     scadenza: ''
   })
 
+  const [emailInput, setEmailInput] = useState('')
+  const [passwordInput, setPasswordInput] = useState('')
+
   const isAdmin = user?.email === ADMIN_EMAIL
 
-  // login
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-
     const { data, error } = await supabase.auth.signInWithPassword({
       email: emailInput,
       password: passwordInput
     })
-
     if (error) return alert(error.message)
-
     setUser(data.user)
     setEmailInput('')
     setPasswordInput('')
@@ -79,7 +72,6 @@ export default function CalendarPage() {
     setUser(null)
   }
 
-  // fetch dati
   const fetchSlots = async (isAdminUser: boolean) => {
     const table = isAdminUser ? 'slots' : 'public_slots'
 
@@ -91,33 +83,23 @@ export default function CalendarPage() {
     if (data) setSlots(data)
   }
 
-  // init
   useEffect(() => {
     const setup = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       const currentUser = session?.user || null
-
       setUser(currentUser)
-
-      const admin = currentUser?.email === ADMIN_EMAIL
-
-      await fetchSlots(admin)
+      await fetchSlots(currentUser?.email === ADMIN_EMAIL)
     }
-
     setup()
   }, [])
 
-  // ri-fetch quando cambia utente
   useEffect(() => {
     fetchSlots(isAdmin)
   }, [user])
 
-  // apertura popup
   const openForm = (slot: Slot) => {
     if (!isAdmin && (slot.is_booked || slot.nome_cognome)) return
-
     setSelectedSlot(slot)
-
     setFormData({
       struttura: slot.struttura || '',
       nome_cognome: slot.nome_cognome || '',
@@ -125,22 +107,18 @@ export default function CalendarPage() {
     })
   }
 
-  // salva
   const handleSubmit = async () => {
     if (!selectedSlot) return
-
     const { error } = await supabase
       .from('slots')
       .update(formData)
       .eq('id', selectedSlot.id)
-
     if (!error) {
       await fetchSlots(isAdmin)
       setSelectedSlot(null)
     }
   }
 
-  // pulisci
   const clearSlot = async (slot: Slot) => {
     const { error } = await supabase
       .from('slots')
@@ -150,17 +128,14 @@ export default function CalendarPage() {
         scadenza: null
       })
       .eq('id', slot.id)
-
-    if (!error) {
-      await fetchSlots(isAdmin)
-    }
+    if (!error) await fetchSlots(isAdmin)
   }
 
   const week = getWeekByIndex(slots, weekIndex)
 
   return (
     <div style={{ padding: 20 }}>
-      <h1>Agenda</h1>
+      <h1>Agenda EAPT</h1>
 
       {!user && (
         <form onSubmit={handleLogin}>
@@ -189,15 +164,12 @@ export default function CalendarPage() {
 
       <div style={{ margin: '10px 0' }}>
         <button
-          className="nav-btn"
           onClick={() => setWeekIndex(w => Math.max(w - 1, 0))}
           disabled={weekIndex === 0}
         >
           ←
         </button>
-
         <button
-          className="nav-btn"
           onClick={() => setWeekIndex(w => w + 1)}
           style={{ marginLeft: 10 }}
         >
@@ -208,7 +180,6 @@ export default function CalendarPage() {
       <div className="calendar">
         {week.map((daySlots, dayIndex) => (
           <div key={dayIndex} className="day-column">
-
             <div className={`day-header ${dayIndex === 0 ? 'today' : ''}`}>
               {daySlots[0]
                 ? new Date(daySlots[0].start_time).toLocaleDateString()
