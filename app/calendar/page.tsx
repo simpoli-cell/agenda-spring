@@ -73,15 +73,33 @@ export default function CalendarPage() {
     setUser(null)
   }
 
-  // Fetch degli slot dalla tabella giusta
+  // Fetch slot dalla tabella principale
   const fetchSlots = async () => {
     if (!user) return
-    const table = isAdmin ? 'slots' : 'public_slots'
-    const { data } = await supabase
-      .from(table)
+    const { data, error } = await supabase
+      .from('slots')
       .select('*')
       .order('start_time')
-    if (data) setSlots(data)
+
+    if (error) {
+      console.error('Errore fetch slots:', error.message)
+      return
+    }
+
+    if (!isAdmin && data) {
+      // utenti normali: nascondi dettagli, mostra solo orario e rosso se prenotato
+      setSlots(
+        data.map((s: Slot) => ({
+          ...s,
+          struttura: null,
+          nome_cognome: null,
+          scadenza: null,
+          is_booked: !!s.user_id
+        }))
+      )
+    } else {
+      setSlots(data)
+    }
   }
 
   useEffect(() => {
@@ -98,7 +116,6 @@ export default function CalendarPage() {
     fetchSlots()
   }, [user])
 
-  // Apri popup solo se slot libero o admin
   const openForm = (slot: Slot) => {
     if (!isAdmin && (slot.user_id || slot.nome_cognome)) return
     setSelectedSlot(slot)
@@ -109,7 +126,6 @@ export default function CalendarPage() {
     })
   }
 
-  // Salva i dati nello slot
   const handleSubmit = async () => {
     if (!selectedSlot || !user) return
 
@@ -121,7 +137,7 @@ export default function CalendarPage() {
     }
 
     const { error } = await supabase
-      .from('slots')   // ✅ aggiornamento solo sulla tabella principale
+      .from('slots')
       .update(payload)
       .eq('id', selectedSlot.id)
 
@@ -134,7 +150,6 @@ export default function CalendarPage() {
     }
   }
 
-  // Clear slot (solo admin)
   const clearSlot = async (slot: Slot) => {
     if (!isAdmin) return
     const { error } = await supabase
@@ -206,9 +221,7 @@ export default function CalendarPage() {
             </div>
 
             {daySlots.map(slot => {
-              const booked = isAdmin
-                ? !!slot.nome_cognome
-                : !!slot.is_booked
+              const booked = !!slot.is_booked
 
               return (
                 <div
