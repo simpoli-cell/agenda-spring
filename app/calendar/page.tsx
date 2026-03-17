@@ -81,6 +81,8 @@ export default function CalendarPage() {
       .select('*')
       .order('start_time')
 
+      console.log('Fetch slots:', data, 'Error: ', error)
+
     if (error) {
       console.error('Errore fetch slots:', error.message)
       return
