@@ -4,17 +4,45 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../../lib/supabaseClient'
 
 type Slot = {
-  id: string
+  id?: string
   start_time: string
   end_time: string
   struttura?: string | null
   nome_cognome?: string | null
   scadenza?: string | null
-  is_booked?: boolean
   user_id?: string | null
+  is_booked?: boolean
 }
 
 const ADMIN_EMAIL = 'admin@agenda.com'
+
+const generateSlotsForDay = (date: Date, startHour = 8, endHour = 17, slotMinutes = 30) => {
+  const slots: Slot[] = []
+  const start = new Date(date)
+  start.setHours(startHour, 0, 0, 0)
+
+  const end = new Date(date)
+  end.setHours(endHour, 0, 0, 0)
+
+  while (start < end) {
+    const slotStart = new Date(start)
+    const slotEnd = new Date(start)
+    slotEnd.setMinutes(slotEnd.getMinutes() + slotMinutes)
+
+    slots.push({
+      start_time: slotStart.toISOString(),
+      end_time: slotEnd.toISOString(),
+      struttura: null,
+      nome_cognome: null,
+      scadenza: null,
+      is_booked: false,
+    })
+
+    start.setMinutes(start.getMinutes() + slotMinutes)
+  }
+
+  return slots
+}
 
 const getWeekByIndex = (slots: Slot[], index: number) => {
   const today = new Date()
@@ -74,7 +102,6 @@ export default function CalendarPage() {
   }
 
   const fetchSlots = async () => {
-    if (!user) return
     const { data, error } = await supabase
       .from('slots')
       .select('*')
@@ -87,18 +114,42 @@ export default function CalendarPage() {
 
     const safeData = data || []
 
-    if (!isAdmin) {
-      setSlots(
-        safeData.map((s: Slot) => ({
-          ...s,
-          struttura: null,
-          nome_cognome: null,
-          scadenza: null,
-          is_booked: !!s.user_id
-        }))
-      )
-    } else {
-      setSlots(safeData)
+    setSlots(
+      safeData.map((s: Slot) => ({
+        ...s,
+        is_booked: !!s.user_id
+      }))
+    )
+  }
+
+  // Genera dinamicamente gli slot per i prossimi 6 mesi
+  const generateFutureSlots = async () => {
+    const today = new Date()
+    const endDate = new Date()
+    endDate.setMonth(endDate.getMonth() + 6)
+
+    const existingSlots = slots || []
+    const newSlots: Slot[] = []
+
+    let current = new Date(today)
+    while (current <= endDate) {
+      const daySlots = generateSlotsForDay(current)
+      daySlots.forEach(slot => {
+        // Non duplicare slot già presenti
+        if (!existingSlots.find(s => s.start_time === slot.start_time && s.end_time === slot.end_time)) {
+          newSlots.push(slot)
+        }
+      })
+      current.setDate(current.getDate() + 1)
+    }
+
+    // Inserisci tutti gli slot nuovi nel DB
+    if (newSlots.length > 0) {
+      const { error } = await supabase
+        .from('slots')
+        .insert(newSlots)
+      if (error) console.error('Errore insert slots:', error.message)
+      await fetchSlots()
     }
   }
 
@@ -108,17 +159,14 @@ export default function CalendarPage() {
       const currentUser = session?.user || null
       setUser(currentUser)
       await fetchSlots()
+      await generateFutureSlots()
     }
     setup()
   }, [])
 
-  useEffect(() => {
-    fetchSlots()
-  }, [user])
-
   const openForm = (slot: Slot) => {
     if (!slot) return
-    if (!isAdmin && (slot.user_id || slot.nome_cognome)) return
+    if (!isAdmin && slot.user_id) return
     setSelectedSlot(slot)
     setFormData({
       struttura: slot.struttura || '',
