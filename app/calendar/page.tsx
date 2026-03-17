@@ -1,4 +1,3 @@
-
 'use client'
 
 import { useEffect, useState } from 'react'
@@ -12,94 +11,92 @@ type Slot = {
   nome_cognome?: string | null
   scadenza?: string | null
   is_booked?: boolean
+  user_id?: string | null
 }
 
 const ADMIN_EMAIL = 'admin@agenda.com'
 
-const getWeekByIndex = (slots: Slot[], index: number) => {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  const startDay = new Date(today)
-  startDay.setDate(today.getDate() + index * 7)
-
-  const week: Slot[][] = []
-
-  for (let i = 0; i < 7; i++) {
-    const day = new Date(startDay)
-    day.setDate(startDay.getDate() + i)
-
-    const daySlots = slots.filter(s =>
-      new Date(s.start_time).toDateString() === day.toDateString()
-    )
-
-    week.push(daySlots)
-  }
-
-  return week
-}
-
 export default function CalendarPage() {
   const [slots, setSlots] = useState<Slot[]>([])
   const [user, setUser] = useState<any>(null)
-  const [weekIndex, setWeekIndex] = useState(0)
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null)
-
   const [formData, setFormData] = useState({
     struttura: '',
     nome_cognome: '',
     scadenza: ''
   })
 
-  const [emailInput, setEmailInput] = useState('')
-  const [passwordInput, setPasswordInput] = useState('')
-
   const isAdmin = user?.email === ADMIN_EMAIL
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: emailInput,
-      password: passwordInput
-    })
-    if (error) return alert(error.message)
-    setUser(data.user)
-    setEmailInput('')
-    setPasswordInput('')
-  }
+  // FETCH SLOT
+  const fetchSlots = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+    const currentUser = session?.user || null
+    setUser(currentUser)
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    setUser(null)
-  }
+    const table = currentUser?.email === ADMIN_EMAIL ? 'slots' : 'public_slots'
 
-  const fetchSlots = async (isAdminUser: boolean) => {
-    const table = isAdminUser ? 'slots' : 'public_slots'
-
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from(table)
       .select('*')
       .order('start_time')
 
-    if (data) setSlots(data)
+    if (error) {
+      console.error('Errore fetch slots:', error.message)
+    } else {
+      setSlots(data || [])
+    }
   }
 
   useEffect(() => {
-    const setup = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      const currentUser = session?.user || null
-      setUser(currentUser)
-      await fetchSlots(currentUser?.email === ADMIN_EMAIL)
-    }
-    setup()
+    fetchSlots()
   }, [])
 
-  useEffect(() => {
-    fetchSlots(isAdmin)
-  }, [user])
+  // SALVATAGGIO SLOT
+  const handleSubmit = async () => {
+    if (!selectedSlot || !user) return
 
+    const payload = {
+      struttura: formData.struttura || null,
+      nome_cognome: formData.nome_cognome || null,
+      scadenza: formData.scadenza || null,
+      user_id: user.id  // <- aggiunto qui
+    }
+
+    const { data, error } = await supabase
+      .from('slots')
+      .update(payload)
+      .eq('id', selectedSlot.id)
+
+    if (error) {
+      console.error('Errore update slot:', error.message)
+      alert('Errore update slot: ' + error.message)
+    } else {
+      await fetchSlots()
+      setSelectedSlot(null)
+    }
+  }
+
+  // PULIZIA SLOT (solo admin)
+  const clearSlot = async (slot: Slot) => {
+    if (!isAdmin) return
+
+    const { error } = await supabase
+      .from('slots')
+      .update({ struttura: null, nome_cognome: null, scadenza: null, user_id: null })
+      .eq('id', slot.id)
+
+    if (error) {
+      console.error('Errore clear slot:', error.message)
+      alert('Errore clear slot: ' + error.message)
+    } else {
+      await fetchSlots()
+    }
+  }
+
+  // APERTURA FORM
   const openForm = (slot: Slot) => {
-    if (!isAdmin && (slot.is_booked || slot.nome_cognome)) return
+    if (!isAdmin && slot.is_booked) return // utenti vedono solo slot rosso
     setSelectedSlot(slot)
     setFormData({
       struttura: slot.struttura || '',
@@ -108,29 +105,6 @@ export default function CalendarPage() {
     })
   }
 
-  const handleSubmit = async () => {
-    if (!selectedSlot) return
-    const { error } = await supabase
-      .from('slots')
-      .update(formData)
-      .eq('id', selectedSlot.id)
-    if (!error) {
-      await fetchSlots(isAdmin)
-      setSelectedSlot(null)
-    }
-  }
-
-  const clearSlot = async (slot: Slot) => {
-    const { error } = await supabase
-      .from('slots')
-      .update({
-        struttura: null,
-        nome_cognome: null,
-        scadenza: null
-      })
-      .eq('id', slot.id)
-    if (!error) await fetchSlots(isAdmin)
-  }
 
   const week = getWeekByIndex(slots, weekIndex)
 
