@@ -7,13 +7,14 @@ type Slot = {
   id: string
   start_time: string
   end_time: string
-  booked_by: string | null
-  notes: string | null
+  struttura: string | null
+  nome_cognome: string | null
+  scadenza: string | null
 }
 
 const ADMIN_EMAIL = 'admin@agenda.com'
 
-// genera slot futuri (UTC → no problemi DST)
+// genera slot futuri
 const generateFutureSlots = async (monthsAhead: number = 6) => {
   const startDate = new Date()
   const endDate = new Date()
@@ -26,6 +27,7 @@ const generateFutureSlots = async (monthsAhead: number = 6) => {
       for (let m = 0; m < 60; m += 30) {
         const start = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), h, m))
         const end = new Date(start.getTime() + 30 * 60000)
+
         slotsToInsert.push({
           start_time: start.toISOString(),
           end_time: end.toISOString()
@@ -40,16 +42,15 @@ const generateFutureSlots = async (monthsAhead: number = 6) => {
     .gte('start_time', startDate.toISOString())
     .lte('start_time', endDate.toISOString())
 
-  const existingStartTimes = new Set(existingSlots?.map(s => s.start_time))
-  const newSlots = slotsToInsert.filter(s => !existingStartTimes.has(s.start_time))
+  const existingSet = new Set(existingSlots?.map(s => s.start_time))
+  const newSlots = slotsToInsert.filter(s => !existingSet.has(s.start_time))
 
-  if (newSlots.length === 0) return
-
-  const { error } = await supabase.from('slots').insert(newSlots)
-  if (error) console.error(error)
+  if (newSlots.length > 0) {
+    await supabase.from('slots').insert(newSlots)
+  }
 }
 
-// settimana scorrevole
+// settimana
 const getWeekByIndex = (slots: Slot[], index: number) => {
   const today = new Date()
   today.setHours(0, 0, 0, 0)
@@ -63,9 +64,9 @@ const getWeekByIndex = (slots: Slot[], index: number) => {
     const day = new Date(startDay)
     day.setDate(startDay.getDate() + i)
 
-    const daySlots = slots.filter(s => {
-      return new Date(s.start_time).toDateString() === day.toDateString()
-    })
+    const daySlots = slots.filter(s =>
+      new Date(s.start_time).toDateString() === day.toDateString()
+    )
 
     week.push(daySlots)
   }
@@ -76,9 +77,19 @@ const getWeekByIndex = (slots: Slot[], index: number) => {
 export default function CalendarPage() {
   const [slots, setSlots] = useState<Slot[]>([])
   const [user, setUser] = useState<any>(null)
+
   const [emailInput, setEmailInput] = useState('')
   const [passwordInput, setPasswordInput] = useState('')
+
   const [weekIndex, setWeekIndex] = useState(0)
+
+  const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null)
+
+  const [formData, setFormData] = useState({
+    struttura: '',
+    nome_cognome: '',
+    scadenza: ''
+  })
 
   const isAdmin = user?.email === ADMIN_EMAIL
 
@@ -111,61 +122,64 @@ export default function CalendarPage() {
 
       await generateFutureSlots(12)
 
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('slots')
         .select('*')
         .order('start_time')
 
-      if (!error && data) setSlots(data)
+      if (data) setSlots(data)
     }
 
     setup()
   }, [])
 
-  // prenotazione
-  const bookSlot = async (slot: Slot) => {
-    if (slot.booked_by) return alert('Slot già prenotato')
+  // apertura popup
+  const openForm = (slot: Slot) => {
+    if (!isAdmin && slot.nome_cognome) return
 
-    const name = prompt('Nome') || ''
-    const note = prompt('Note (opzionale)') || null
+    setSelectedSlot(slot)
+
+    setFormData({
+      struttura: slot.struttura || '',
+      nome_cognome: slot.nome_cognome || '',
+      scadenza: slot.scadenza || ''
+    })
+  }
+
+  // salva
+  const handleSubmit = async () => {
+    if (!selectedSlot) return
 
     const { error } = await supabase
       .from('slots')
-      .update({ booked_by: name, notes: note })
-      .eq('id', slot.id)
+      .update(formData)
+      .eq('id', selectedSlot.id)
 
     if (!error) {
       setSlots(slots.map(s =>
-        s.id === slot.id ? { ...s, booked_by: name, notes: note } : s
+        s.id === selectedSlot.id ? { ...s, ...formData } : s
       ))
+
+      setSelectedSlot(null)
     }
   }
 
-  const editSlot = async (slot: Slot) => {
-    const name = prompt('Nome', slot.booked_by || '') || slot.booked_by
-    const note = prompt('Note', slot.notes || '') || slot.notes
-
-    const { error } = await supabase
-      .from('slots')
-      .update({ booked_by: name, notes: note })
-      .eq('id', slot.id)
-
-    if (!error) {
-      setSlots(slots.map(s =>
-        s.id === slot.id ? { ...s, booked_by: name, notes: note } : s
-      ))
-    }
-  }
-
+  // pulisci (admin)
   const clearSlot = async (slot: Slot) => {
     const { error } = await supabase
       .from('slots')
-      .update({ booked_by: null, notes: null })
+      .update({
+        struttura: null,
+        nome_cognome: null,
+        scadenza: null
+      })
       .eq('id', slot.id)
 
     if (!error) {
       setSlots(slots.map(s =>
-        s.id === slot.id ? { ...s, booked_by: null, notes: null } : s
+        s.id === slot.id
+          ? { ...s, struttura: null, nome_cognome: null, scadenza: null }
+          : s
       ))
     }
   }
@@ -180,7 +194,7 @@ export default function CalendarPage() {
         <form onSubmit={handleLogin}>
           <input
             type="email"
-            placeholder="Email admin"
+            placeholder="Email"
             value={emailInput}
             onChange={e => setEmailInput(e.target.value)}
           />
@@ -233,8 +247,8 @@ export default function CalendarPage() {
             {daySlots.map(slot => (
               <div
                 key={slot.id}
-                className={`slot ${slot.booked_by ? 'booked' : 'free'}`}
-                onClick={() => { if (!isAdmin) bookSlot(slot) }}
+                className={`slot ${slot.nome_cognome ? 'booked' : 'free'}`}
+                onClick={() => openForm(slot)}
               >
                 <div>
                   {new Date(slot.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -242,26 +256,80 @@ export default function CalendarPage() {
                   {new Date(slot.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
 
-                {isAdmin && (
-                  <>
-                    {slot.booked_by && <div>Utente: {slot.booked_by}</div>}
-                    {slot.notes && <div>Note: {slot.notes}</div>}
+                {slot.struttura && <div>{slot.struttura}</div>}
+                {slot.nome_cognome && <div>{slot.nome_cognome}</div>}
+                {isAdmin && slot.scadenza && <div>Scadenza: {slot.scadenza}</div>}
 
-                    <div style={{ marginTop: 5 }}>
-                      <button className="btn btn-primary" onClick={() => editSlot(slot)}>
-                        Edit
-                      </button>
-                      <button className="btn btn-secondary" onClick={() => clearSlot(slot)}>
-                        Clear
-                      </button>
-                    </div>
-                  </>
+                {isAdmin && slot.nome_cognome && (
+                  <button
+                    className="btn btn-secondary"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      clearSlot(slot)
+                    }}
+                  >
+                    Clear
+                  </button>
                 )}
               </div>
             ))}
           </div>
         ))}
       </div>
+
+      {selectedSlot && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0,0,0,0.5)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }}>
+          <div style={{
+            background: 'white',
+            padding: 20,
+            borderRadius: 10,
+            width: 300
+          }}>
+            <h3>Gestione slot</h3>
+
+            <input
+              placeholder="Nome struttura"
+              value={formData.struttura}
+              onChange={e => setFormData({ ...formData, struttura: e.target.value })}
+            />
+
+            <input
+              placeholder="Nome e cognome"
+              value={formData.nome_cognome}
+              onChange={e => setFormData({ ...formData, nome_cognome: e.target.value })}
+            />
+
+            <input
+              type="date"
+              value={formData.scadenza}
+              onChange={e => setFormData({ ...formData, scadenza: e.target.value })}
+            />
+
+            <div style={{ marginTop: 10 }}>
+              <button className="btn btn-primary" onClick={handleSubmit}>
+                Salva
+              </button>
+
+              <button
+                className="btn btn-secondary"
+                onClick={() => setSelectedSlot(null)}
+              >
+                Annulla
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
