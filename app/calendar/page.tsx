@@ -7,48 +7,13 @@ type Slot = {
   id: string
   start_time: string
   end_time: string
-  struttura: string | null
-  nome_cognome: string | null
-  scadenza: string | null
+  struttura?: string | null
+  nome_cognome?: string | null
+  scadenza?: string | null
+  is_booked?: boolean
 }
 
 const ADMIN_EMAIL = 'admin@agenda.com'
-
-// genera slot futuri
-const generateFutureSlots = async (monthsAhead: number = 6) => {
-  const startDate = new Date()
-  const endDate = new Date()
-  endDate.setMonth(endDate.getMonth() + monthsAhead)
-
-  const slotsToInsert: { start_time: string; end_time: string }[] = []
-
-  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-    for (let h = 8; h < 17; h++) {
-      for (let m = 0; m < 60; m += 30) {
-        const start = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), h, m))
-        const end = new Date(start.getTime() + 30 * 60000)
-
-        slotsToInsert.push({
-          start_time: start.toISOString(),
-          end_time: end.toISOString()
-        })
-      }
-    }
-  }
-
-  const { data: existingSlots } = await supabase
-    .from('slots')
-    .select('start_time')
-    .gte('start_time', startDate.toISOString())
-    .lte('start_time', endDate.toISOString())
-
-  const existingSet = new Set(existingSlots?.map(s => s.start_time))
-  const newSlots = slotsToInsert.filter(s => !existingSet.has(s.start_time))
-
-  if (newSlots.length > 0) {
-    await supabase.from('slots').insert(newSlots)
-  }
-}
 
 // settimana
 const getWeekByIndex = (slots: Slot[], index: number) => {
@@ -114,28 +79,42 @@ export default function CalendarPage() {
     setUser(null)
   }
 
+  // fetch dati
+  const fetchSlots = async (isAdminUser: boolean) => {
+    const table = isAdminUser ? 'slots' : 'public_slots'
+
+    const { data } = await supabase
+      .from(table)
+      .select('*')
+      .order('start_time')
+
+    if (data) setSlots(data)
+  }
+
   // init
   useEffect(() => {
     const setup = async () => {
       const { data: { session } } = await supabase.auth.getSession()
-      setUser(session?.user || null)
+      const currentUser = session?.user || null
 
-      await generateFutureSlots(12)
+      setUser(currentUser)
 
-      const { data } = await supabase
-        .from('slots')
-        .select('*')
-        .order('start_time')
+      const admin = currentUser?.email === ADMIN_EMAIL
 
-      if (data) setSlots(data)
+      await fetchSlots(admin)
     }
 
     setup()
   }, [])
 
+  // ri-fetch quando cambia utente
+  useEffect(() => {
+    fetchSlots(isAdmin)
+  }, [user])
+
   // apertura popup
   const openForm = (slot: Slot) => {
-    if (!isAdmin && slot.nome_cognome) return
+    if (!isAdmin && (slot.is_booked || slot.nome_cognome)) return
 
     setSelectedSlot(slot)
 
@@ -156,15 +135,12 @@ export default function CalendarPage() {
       .eq('id', selectedSlot.id)
 
     if (!error) {
-      setSlots(slots.map(s =>
-        s.id === selectedSlot.id ? { ...s, ...formData } : s
-      ))
-
+      await fetchSlots(isAdmin)
       setSelectedSlot(null)
     }
   }
 
-  // pulisci (admin)
+  // pulisci
   const clearSlot = async (slot: Slot) => {
     const { error } = await supabase
       .from('slots')
@@ -176,11 +152,7 @@ export default function CalendarPage() {
       .eq('id', slot.id)
 
     if (!error) {
-      setSlots(slots.map(s =>
-        s.id === slot.id
-          ? { ...s, struttura: null, nome_cognome: null, scadenza: null }
-          : s
-      ))
+      await fetchSlots(isAdmin)
     }
   }
 
@@ -244,39 +216,45 @@ export default function CalendarPage() {
               }
             </div>
 
-            {daySlots.map(slot => (
-              <div
-                key={slot.id}
-                className={`slot ${slot.nome_cognome ? 'booked' : 'free'}`}
-                onClick={() => openForm(slot)}
-              >
-                <div>
-                  {new Date(slot.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  {' - '}
-                  {new Date(slot.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+            {daySlots.map(slot => {
+              const booked = isAdmin
+                ? !!slot.nome_cognome
+                : !!slot.is_booked
+
+              return (
+                <div
+                  key={slot.id}
+                  className={`slot ${booked ? 'booked' : 'free'}`}
+                  onClick={() => openForm(slot)}
+                >
+                  <div>
+                    {new Date(slot.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {' - '}
+                    {new Date(slot.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </div>
+
+                  {isAdmin && (
+                    <>
+                      {slot.struttura && <div>{slot.struttura}</div>}
+                      {slot.nome_cognome && <div>{slot.nome_cognome}</div>}
+                      {slot.scadenza && <div>Scadenza: {slot.scadenza}</div>}
+
+                      {slot.nome_cognome && (
+                        <button
+                          className="btn btn-secondary"
+                          onClick={(e) => {
+                            e.stopPropagation()
+                            clearSlot(slot)
+                          }}
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </>
+                  )}
                 </div>
-              {isAdmin && (
-                <>
-
-                  {slot.struttura && <div>{slot.struttura}</div>}
-                  {slot.nome_cognome && <div>{slot.nome_cognome}</div>}
-                  {slot.scadenza && <div>Scadenza: {slot.scadenza}</div>}
-
-                </>
-              )}
-                {isAdmin && slot.nome_cognome && (
-                  <button
-                    className="btn btn-secondary"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      clearSlot(slot)
-                    }}
-                  >
-                    Clear
-                  </button>
-                )}
-              </div>
-            ))}
+              )
+            })}
           </div>
         ))}
       </div>
