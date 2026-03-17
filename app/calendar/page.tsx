@@ -13,7 +13,7 @@ type Slot = {
   user_id?: string | null
 }
 
-const ADMIN_EMAIL = 'admin@tuoemail.com'
+const ADMIN_EMAIL = 'admin@agenda.com'
 
 const getWeekByIndex = (slots: Slot[], index: number) => {
   const today = new Date()
@@ -41,6 +41,8 @@ const getWeekByIndex = (slots: Slot[], index: number) => {
 export default function CalendarPage() {
   const [slots, setSlots] = useState<Slot[]>([])
   const [user, setUser] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
   const [weekIndex, setWeekIndex] = useState(0)
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null)
 
@@ -55,31 +57,52 @@ export default function CalendarPage() {
 
   const isAdmin = user?.email === ADMIN_EMAIL
 
+  // 🔐 LOGIN
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
+
     const { data, error } = await supabase.auth.signInWithPassword({
       email: emailInput,
       password: passwordInput
     })
-    if (error) return alert(error.message)
+
+    if (error) {
+      alert(error.message)
+      return
+    }
+
     setUser(data.user)
     setEmailInput('')
     setPasswordInput('')
+
+    await fetchSlots() // fetch DOPO login
   }
 
+  // 🚪 LOGOUT
   const handleLogout = async () => {
     await supabase.auth.signOut()
     setUser(null)
+    setSlots([])
   }
 
+  // 📥 FETCH SLOT (protetto)
   const fetchSlots = async () => {
+    const { data: { session } } = await supabase.auth.getSession()
+
+    if (!session) {
+      console.log('NO SESSION → niente fetch')
+      return
+    }
+
+    console.log('FETCH SLOT...')
+
     const { data, error } = await supabase
       .from('slots')
       .select('*')
       .order('start_time')
 
     if (error) {
-      console.error('Errore fetch:', error.message)
+      console.error('Errore fetch:', error)
       alert(error.message)
       return
     }
@@ -87,16 +110,27 @@ export default function CalendarPage() {
     setSlots(data || [])
   }
 
+  // 🚀 INIT
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
-      setUser(session?.user || null)
-      await fetchSlots()
+      const currentUser = session?.user || null
+
+      console.log('USER:', currentUser)
+
+      setUser(currentUser)
+
+      if (currentUser) {
+        await fetchSlots()
+      }
+
+      setLoading(false)
     }
 
     init()
   }, [])
 
+  // 🟢 APRI MODALE
   const openForm = (slot: Slot) => {
     if (!isAdmin && slot.user_id) return
 
@@ -108,6 +142,7 @@ export default function CalendarPage() {
     })
   }
 
+  // 💾 SALVA
   const handleSubmit = async () => {
     if (!selectedSlot || !user) return
 
@@ -122,7 +157,7 @@ export default function CalendarPage() {
       .eq('id', selectedSlot.id)
 
     if (error) {
-      console.error('Errore save:', error.message)
+      console.error('Errore save:', error)
       alert(error.message)
     } else {
       await fetchSlots()
@@ -130,6 +165,7 @@ export default function CalendarPage() {
     }
   }
 
+  // 🧹 CLEAR (admin)
   const clearSlot = async (slot: Slot) => {
     if (!isAdmin) return
 
@@ -148,10 +184,13 @@ export default function CalendarPage() {
 
   const week = getWeekByIndex(slots, weekIndex)
 
+  if (loading) return <div>Loading...</div>
+
   return (
     <div style={{ padding: 20 }}>
       <h1>Agenda</h1>
 
+      {/* LOGIN */}
       {!user && (
         <form onSubmit={handleLogin}>
           <input
@@ -170,6 +209,7 @@ export default function CalendarPage() {
         </form>
       )}
 
+      {/* USER INFO */}
       {user && (
         <div>
           <p>{user.email} {isAdmin && '(Admin)'}</p>
@@ -177,6 +217,7 @@ export default function CalendarPage() {
         </div>
       )}
 
+      {/* NAV */}
       <div style={{ margin: '10px 0' }}>
         <button onClick={() => setWeekIndex(w => Math.max(w - 1, 0))}>
           ←
@@ -186,6 +227,7 @@ export default function CalendarPage() {
         </button>
       </div>
 
+      {/* CALENDARIO */}
       <div className="calendar">
         {week.map((daySlots, i) => (
           <div key={i} className="day-column">
@@ -233,6 +275,7 @@ export default function CalendarPage() {
         ))}
       </div>
 
+      {/* MODALE */}
       {selectedSlot && (
         <div className="modal">
           <div className="modal-content">
