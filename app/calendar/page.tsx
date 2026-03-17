@@ -15,29 +15,6 @@ type Slot = {
 
 const ADMIN_EMAIL = 'admin@agenda.com'
 
-const getWeekByIndex = (slots: Slot[], index: number) => {
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-
-  const startDay = new Date(today)
-  startDay.setDate(today.getDate() + index * 7)
-
-  const week: Slot[][] = []
-
-  for (let i = 0; i < 7; i++) {
-    const day = new Date(startDay)
-    day.setDate(startDay.getDate() + i)
-
-    const daySlots = slots.filter(s =>
-      new Date(s.start_time).toDateString() === day.toDateString()
-    )
-
-    week.push(daySlots)
-  }
-
-  return week
-}
-
 export default function CalendarPage() {
   const [slots, setSlots] = useState<Slot[]>([])
   const [user, setUser] = useState<any>(null)
@@ -52,65 +29,9 @@ export default function CalendarPage() {
     scadenza: ''
   })
 
-  const [emailInput, setEmailInput] = useState('')
-  const [passwordInput, setPasswordInput] = useState('')
-
   const isAdmin = user?.email === ADMIN_EMAIL
 
-  // 🔐 LOGIN
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault()
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: emailInput,
-      password: passwordInput
-    })
-
-    if (error) {
-      alert(error.message)
-      return
-    }
-
-    setUser(data.user)
-    setEmailInput('')
-    setPasswordInput('')
-
-    await fetchSlots() // fetch DOPO login
-  }
-
-  // 🚪 LOGOUT
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    setUser(null)
-    setSlots([])
-  }
-
-  // 📥 FETCH SLOT (protetto)
-  const fetchSlots = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-
-    if (!session) {
-      console.log('NO SESSION → niente fetch')
-      return
-    }
-
-    console.log('FETCH SLOT...')
-
-    const { data, error } = await supabase
-      .from('slots')
-      .select('*')
-      .order('start_time')
-
-    if (error) {
-      console.error('Errore fetch:', error)
-      alert(error.message)
-      return
-    }
-
-    setSlots(data || [])
-  }
-
-  // 🚀 INIT
+  // 🔐 INIT
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -120,8 +41,19 @@ export default function CalendarPage() {
 
       setUser(currentUser)
 
-      if (currentUser) {
-        await fetchSlots()
+      // FETCH sempre (RLS disabilitato → deve funzionare)
+      const { data, error } = await supabase
+        .from('slots')
+        .select('*')
+        .order('start_time')
+
+      console.log('SLOTS RAW:', data)
+
+      if (error) {
+        console.error('FETCH ERROR:', error)
+        alert(error.message)
+      } else {
+        setSlots(data || [])
       }
 
       setLoading(false)
@@ -129,6 +61,27 @@ export default function CalendarPage() {
 
     init()
   }, [])
+
+  // 📅 calcolo settimana (INDIPENDENTE dagli slot)
+  const getWeekDates = () => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+
+    const start = new Date(today)
+    start.setDate(today.getDate() + weekIndex * 7)
+
+    const days: Date[] = []
+
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(start)
+      d.setDate(start.getDate() + i)
+      days.push(d)
+    }
+
+    return days
+  }
+
+  const weekDates = getWeekDates()
 
   // 🟢 APRI MODALE
   const openForm = (slot: Slot) => {
@@ -157,19 +110,21 @@ export default function CalendarPage() {
       .eq('id', selectedSlot.id)
 
     if (error) {
-      console.error('Errore save:', error)
+      console.error('SAVE ERROR:', error)
       alert(error.message)
     } else {
-      await fetchSlots()
+      // refresh
+      const { data } = await supabase.from('slots').select('*')
+      setSlots(data || [])
       setSelectedSlot(null)
     }
   }
 
-  // 🧹 CLEAR (admin)
+  // 🧹 CLEAR
   const clearSlot = async (slot: Slot) => {
     if (!isAdmin) return
 
-    const { error } = await supabase
+    await supabase
       .from('slots')
       .update({
         struttura: null,
@@ -179,10 +134,9 @@ export default function CalendarPage() {
       })
       .eq('id', slot.id)
 
-    if (!error) await fetchSlots()
+    const { data } = await supabase.from('slots').select('*')
+    setSlots(data || [])
   }
-
-  const week = getWeekByIndex(slots, weekIndex)
 
   if (loading) return <div>Loading...</div>
 
@@ -190,32 +144,10 @@ export default function CalendarPage() {
     <div style={{ padding: 20 }}>
       <h1>Agenda</h1>
 
-      {/* LOGIN */}
-      {!user && (
-        <form onSubmit={handleLogin}>
-          <input
-            type="email"
-            placeholder="Email"
-            value={emailInput}
-            onChange={e => setEmailInput(e.target.value)}
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={passwordInput}
-            onChange={e => setPasswordInput(e.target.value)}
-          />
-          <button type="submit">Login</button>
-        </form>
-      )}
-
-      {/* USER INFO */}
-      {user && (
-        <div>
-          <p>{user.email} {isAdmin && '(Admin)'}</p>
-          <button onClick={handleLogout}>Logout</button>
-        </div>
-      )}
+      {/* DEBUG */}
+      <div style={{ marginBottom: 10 }}>
+        Slot caricati: {slots.length}
+      </div>
 
       {/* NAV */}
       <div style={{ margin: '10px 0' }}>
@@ -229,50 +161,60 @@ export default function CalendarPage() {
 
       {/* CALENDARIO */}
       <div className="calendar">
-        {week.map((daySlots, i) => (
-          <div key={i} className="day-column">
-            <div className="day-header">
-              {daySlots[0]
-                ? new Date(daySlots[0].start_time).toLocaleDateString()
-                : ''}
-            </div>
+        {weekDates.map((day, i) => {
+          const daySlots = slots.filter(s =>
+            new Date(s.start_time).toDateString() === day.toDateString()
+          )
 
-            {daySlots.map(slot => {
-              const booked = !!slot.user_id
+          return (
+            <div key={i} className="day-column">
+              <div className="day-header">
+                {day.toLocaleDateString()}
+              </div>
 
-              return (
-                <div
-                  key={slot.id}
-                  className={`slot ${booked ? 'booked' : 'free'}`}
-                  onClick={() => openForm(slot)}
-                >
-                  <div>
-                    {new Date(slot.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    {' - '}
-                    {new Date(slot.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </div>
-
-                  {isAdmin && (
-                    <>
-                      {slot.struttura && <div>{slot.struttura}</div>}
-                      {slot.nome_cognome && <div>{slot.nome_cognome}</div>}
-                      {slot.scadenza && <div>Scadenza: {slot.scadenza}</div>}
-
-                      {slot.user_id && (
-                        <button onClick={(e) => {
-                          e.stopPropagation()
-                          clearSlot(slot)
-                        }}>
-                          Clear
-                        </button>
-                      )}
-                    </>
-                  )}
+              {daySlots.length === 0 && (
+                <div style={{ fontSize: 12, opacity: 0.5 }}>
+                  Nessuno slot
                 </div>
-              )
-            })}
-          </div>
-        ))}
+              )}
+
+              {daySlots.map(slot => {
+                const booked = !!slot.user_id
+
+                return (
+                  <div
+                    key={slot.id}
+                    className={`slot ${booked ? 'booked' : 'free'}`}
+                    onClick={() => openForm(slot)}
+                  >
+                    <div>
+                      {new Date(slot.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      {' - '}
+                      {new Date(slot.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+
+                    {isAdmin && (
+                      <>
+                        {slot.struttura && <div>{slot.struttura}</div>}
+                        {slot.nome_cognome && <div>{slot.nome_cognome}</div>}
+                        {slot.scadenza && <div>{slot.scadenza}</div>}
+
+                        {slot.user_id && (
+                          <button onClick={(e) => {
+                            e.stopPropagation()
+                            clearSlot(slot)
+                          }}>
+                            Clear
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )
+        })}
       </div>
 
       {/* MODALE */}
