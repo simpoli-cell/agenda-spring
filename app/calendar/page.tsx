@@ -106,7 +106,7 @@ export default function CalendarPage() {
   }
 
 
-  const week = getWeekByIndex(slots, weekIndex)
+//  const week = getWeekByIndex(slots, weekIndex)
 
   return (
     <div style={{ padding: 20 }}>
