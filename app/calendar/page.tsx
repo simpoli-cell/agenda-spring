@@ -73,14 +73,14 @@ export default function CalendarPage() {
     setUser(null)
   }
 
-  const fetchSlots = async (isAdminUser: boolean) => {
-    const table = isAdminUser ? 'slots' : 'public_slots'
-
+  // Fetch degli slot dalla tabella giusta
+  const fetchSlots = async () => {
+    if (!user) return
+    const table = isAdmin ? 'slots' : 'public_slots'
     const { data } = await supabase
       .from(table)
       .select('*')
       .order('start_time')
-
     if (data) setSlots(data)
   }
 
@@ -89,17 +89,18 @@ export default function CalendarPage() {
       const { data: { session } } = await supabase.auth.getSession()
       const currentUser = session?.user || null
       setUser(currentUser)
-      await fetchSlots(currentUser?.email === ADMIN_EMAIL)
+      await fetchSlots()
     }
     setup()
   }, [])
 
   useEffect(() => {
-    fetchSlots(isAdmin)
+    fetchSlots()
   }, [user])
 
+  // Apri popup solo se slot libero o admin
   const openForm = (slot: Slot) => {
-    if (!isAdmin && (slot.is_booked || slot.nome_cognome)) return
+    if (!isAdmin && (slot.user_id || slot.nome_cognome)) return
     setSelectedSlot(slot)
     setFormData({
       struttura: slot.struttura || '',
@@ -108,6 +109,7 @@ export default function CalendarPage() {
     })
   }
 
+  // Salva i dati nello slot
   const handleSubmit = async () => {
     if (!selectedSlot || !user) return
 
@@ -115,20 +117,26 @@ export default function CalendarPage() {
       struttura: formData.struttura || null,
       nome_cognome: formData.nome_cognome || null,
       scadenza: formData.scadenza || null,
-      user_id: user.id // <- aggiunto qui
+      user_id: user.id
     }
 
     const { error } = await supabase
-      .from('slots')
+      .from('slots')   // ✅ aggiornamento solo sulla tabella principale
       .update(payload)
       .eq('id', selectedSlot.id)
-    if (!error) {
-      await fetchSlots(isAdmin)
+
+    if (error) {
+      console.error('Errore update slot:', error.message)
+      alert('Errore update slot: ' + error.message)
+    } else {
+      await fetchSlots()
       setSelectedSlot(null)
     }
   }
 
+  // Clear slot (solo admin)
   const clearSlot = async (slot: Slot) => {
+    if (!isAdmin) return
     const { error } = await supabase
       .from('slots')
       .update({
@@ -138,7 +146,7 @@ export default function CalendarPage() {
         user_id: null
       })
       .eq('id', slot.id)
-    if (!error) await fetchSlots(isAdmin)
+    if (!error) await fetchSlots()
   }
 
   const week = getWeekByIndex(slots, weekIndex)
