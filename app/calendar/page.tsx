@@ -14,7 +14,6 @@ type Slot = {
 
 const ADMIN_EMAIL = 'admin@agenda.com'
 
-// ✅ GENERAZIONE SLOT (FIXATA)
 const generateFutureSlots = async (monthsAhead: number = 6) => {
   const startDate = new Date()
   const endDate = new Date()
@@ -22,10 +21,11 @@ const generateFutureSlots = async (monthsAhead: number = 6) => {
 
   const slotsToInsert: { start_time: string; end_time: string }[] = []
 
-  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+  for (let d = new Date(startDate); d <= endDate; d = new Date(d.setDate(d.getDate() + 1))) {
     for (let h = 8; h < 17; h++) {
       for (let m = 0; m < 60; m += 30) {
-        const start = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), h, m))
+        const start = new Date(d)
+        start.setUTCHours(h, m, 0, 0)
         const end = new Date(start.getTime() + 30 * 60000)
 
         slotsToInsert.push({
@@ -36,34 +36,22 @@ const generateFutureSlots = async (monthsAhead: number = 6) => {
     }
   }
 
-  const { data: existingSlots, error: fetchError } = await supabase
+  // fetch esistenti
+  const { data: existingSlots } = await supabase
     .from('slots')
     .select('start_time')
+    .gte('start_time', startDate.toISOString())
+    .lte('start_time', endDate.toISOString())
 
-  if (fetchError) {
-    console.error('Errore fetch:', fetchError)
-    return
-  }
-
-  const existingSet = new Set(existingSlots.map(s => s.start_time))
+  const existingSet = new Set(existingSlots?.map(s => s.start_time))
   const newSlots = slotsToInsert.filter(s => !existingSet.has(s.start_time))
 
-  console.log('Slot da inserire:', newSlots.length)
-
-  const batchSize = 500
-
+  // insert a batch di 200
+  const batchSize = 200
   for (let i = 0; i < newSlots.length; i += batchSize) {
     const batch = newSlots.slice(i, i + batchSize)
-
-    const { error } = await supabase.from('slots').insert(batch)
-
-    if (error) {
-      console.error('Errore insert batch:', error)
-      return
-    }
+    await supabase.from('slots').insert(batch)
   }
-
-  console.log('Slot inseriti')
 }
 
 // settimana
@@ -93,12 +81,7 @@ const getWeekByIndex = (slots: Slot[], index: number) => {
 export default function CalendarPage() {
   const [slots, setSlots] = useState<Slot[]>([])
   const [user, setUser] = useState<any>(null)
-
-  const [emailInput, setEmailInput] = useState('')
-  const [passwordInput, setPasswordInput] = useState('')
-
   const [weekIndex, setWeekIndex] = useState(0)
-
   const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null)
 
   const [formData, setFormData] = useState({
@@ -107,22 +90,18 @@ export default function CalendarPage() {
     scadenza: ''
   })
 
+  const [emailInput, setEmailInput] = useState('')
+  const [passwordInput, setPasswordInput] = useState('')
+
   const isAdmin = user?.email === ADMIN_EMAIL
 
-  // login
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
-
     const { data, error } = await supabase.auth.signInWithPassword({
       email: emailInput,
       password: passwordInput
     })
-
-    if (error) {
-      alert(error.message)
-      return
-    }
-
+    if (error) return alert(error.message)
     setUser(data.user)
     setEmailInput('')
     setPasswordInput('')
@@ -133,40 +112,26 @@ export default function CalendarPage() {
     setUser(null)
   }
 
-  // INIT
   useEffect(() => {
     const setup = async () => {
-      console.log('INIT START')
-
       const { data: { session } } = await supabase.auth.getSession()
       setUser(session?.user || null)
 
       await generateFutureSlots(6)
 
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('slots')
         .select('*')
         .order('start_time')
 
-      if (error) {
-        console.error('Errore fetch slots:', error)
-        return
-      }
-
-      console.log('Slot caricati:', data?.length)
-
       if (data) setSlots(data)
     }
-
     setup()
   }, [])
 
-  // apertura popup
   const openForm = (slot: Slot) => {
     if (!isAdmin && slot.nome_cognome) return
-
     setSelectedSlot(slot)
-
     setFormData({
       struttura: slot.struttura || '',
       nome_cognome: slot.nome_cognome || '',
@@ -174,48 +139,30 @@ export default function CalendarPage() {
     })
   }
 
-  // salva
   const handleSubmit = async () => {
     if (!selectedSlot) return
-
     const { error } = await supabase
       .from('slots')
       .update(formData)
       .eq('id', selectedSlot.id)
-
-    if (error) {
-      alert(error.message)
-      return
+    if (!error) {
+      setSlots(slots.map(s =>
+        s.id === selectedSlot.id ? { ...s, ...formData } : s
+      ))
+      setSelectedSlot(null)
     }
-
-    setSlots(slots.map(s =>
-      s.id === selectedSlot.id ? { ...s, ...formData } : s
-    ))
-
-    setSelectedSlot(null)
   }
 
-  // pulisci
   const clearSlot = async (slot: Slot) => {
     const { error } = await supabase
       .from('slots')
-      .update({
-        struttura: null,
-        nome_cognome: null,
-        scadenza: null
-      })
+      .update({ struttura: null, nome_cognome: null, scadenza: null })
       .eq('id', slot.id)
-
-    if (error) {
-      alert(error.message)
-      return
+    if (!error) {
+      setSlots(slots.map(s =>
+        s.id === slot.id ? { ...s, struttura: null, nome_cognome: null, scadenza: null } : s
+      ))
     }
-
-    setSlots(slots.map(s =>
-      s.id === slot.id
-        ? { ...s, struttura: null, nome_cognome: null, scadenza: null }
-        : s
-    ))
   }
 
   const week = getWeekByIndex(slots, weekIndex)
@@ -226,18 +173,8 @@ export default function CalendarPage() {
 
       {!user && (
         <form onSubmit={handleLogin}>
-          <input
-            type="email"
-            placeholder="Email"
-            value={emailInput}
-            onChange={e => setEmailInput(e.target.value)}
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={passwordInput}
-            onChange={e => setPasswordInput(e.target.value)}
-          />
+          <input type="email" placeholder="Email" value={emailInput} onChange={e => setEmailInput(e.target.value)} />
+          <input type="password" placeholder="Password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} />
           <button type="submit">Login</button>
         </form>
       )}
@@ -250,35 +187,22 @@ export default function CalendarPage() {
       )}
 
       <div style={{ margin: '10px 0' }}>
-        <button onClick={() => setWeekIndex(w => Math.max(w - 1, 0))}>
-          ←
-        </button>
-
-        <button onClick={() => setWeekIndex(w => w + 1)} style={{ marginLeft: 10 }}>
-          →
-        </button>
+        <button onClick={() => setWeekIndex(w => Math.max(w - 1, 0))}>←</button>
+        <button onClick={() => setWeekIndex(w => w + 1)} style={{ marginLeft: 10 }}>→</button>
       </div>
 
       <div>
         {week.map((daySlots, dayIndex) => (
           <div key={dayIndex} style={{ marginBottom: 20 }}>
-
             <h3>
               {daySlots[0]
                 ? new Date(daySlots[0].start_time).toLocaleDateString()
-                : new Date(Date.now() + (weekIndex * 7 + dayIndex) * 86400000).toLocaleDateString()
-              }
+                : new Date(Date.now() + (weekIndex * 7 + dayIndex) * 86400000).toLocaleDateString()}
             </h3>
-
             {daySlots.map(slot => (
               <div
                 key={slot.id}
-                style={{
-                  border: '1px solid #ccc',
-                  padding: 10,
-                  marginBottom: 5,
-                  cursor: 'pointer'
-                }}
+                style={{ border: '1px solid #ccc', padding: 10, marginBottom: 5, cursor: 'pointer' }}
                 onClick={() => openForm(slot)}
               >
                 <div>
@@ -286,8 +210,8 @@ export default function CalendarPage() {
                   {' - '}
                   {new Date(slot.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
-
                 {slot.nome_cognome && <div>{slot.nome_cognome}</div>}
+                {isAdmin && slot.scadenza && <div>Scadenza: {slot.scadenza}</div>}
               </div>
             ))}
           </div>
@@ -296,42 +220,15 @@ export default function CalendarPage() {
 
       {selectedSlot && (
         <div style={{
-          position: 'fixed',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
           background: 'rgba(0,0,0,0.5)',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center'
+          display: 'flex', alignItems: 'center', justifyContent: 'center'
         }}>
-          <div style={{
-            background: 'white',
-            padding: 20,
-            borderRadius: 10,
-            width: 300
-          }}>
+          <div style={{ background: 'white', padding: 20, borderRadius: 10, width: 300 }}>
             <h3>Gestione slot</h3>
-
-            <input
-              placeholder="Nome struttura"
-              value={formData.struttura}
-              onChange={e => setFormData({ ...formData, struttura: e.target.value })}
-            />
-
-            <input
-              placeholder="Nome e cognome"
-              value={formData.nome_cognome}
-              onChange={e => setFormData({ ...formData, nome_cognome: e.target.value })}
-            />
-
-            <input
-              type="date"
-              value={formData.scadenza}
-              onChange={e => setFormData({ ...formData, scadenza: e.target.value })}
-            />
-
+            <input placeholder="Nome struttura" value={formData.struttura} onChange={e => setFormData({ ...formData, struttura: e.target.value })} />
+            <input placeholder="Nome e cognome" value={formData.nome_cognome} onChange={e => setFormData({ ...formData, nome_cognome: e.target.value })} />
+            <input type="date" value={formData.scadenza} onChange={e => setFormData({ ...formData, scadenza: e.target.value })} />
             <div style={{ marginTop: 10 }}>
               <button onClick={handleSubmit}>Salva</button>
               <button onClick={() => setSelectedSlot(null)}>Annulla</button>
