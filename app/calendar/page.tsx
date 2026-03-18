@@ -14,7 +14,7 @@ type Slot = {
 
 const ADMIN_EMAIL = 'admin@agenda.com'
 
-// ✅ GENERAZIONE SLOT (FIXATA)
+// genera slot futuri
 const generateFutureSlots = async (monthsAhead: number = 6) => {
   const startDate = new Date()
   const endDate = new Date()
@@ -36,34 +36,18 @@ const generateFutureSlots = async (monthsAhead: number = 6) => {
     }
   }
 
-  const { data: existingSlots, error: fetchError } = await supabase
+  const { data: existingSlots } = await supabase
     .from('slots')
     .select('start_time')
+    .gte('start_time', startDate.toISOString())
+    .lte('start_time', endDate.toISOString())
 
-  if (fetchError) {
-    console.error('Errore fetch:', fetchError)
-    return
-  }
-
-  const existingSet = new Set(existingSlots.map(s => s.start_time))
+  const existingSet = new Set(existingSlots?.map(s => s.start_time))
   const newSlots = slotsToInsert.filter(s => !existingSet.has(s.start_time))
 
-  console.log('Slot da inserire:', newSlots.length)
-
-  const batchSize = 500
-
-  for (let i = 0; i < newSlots.length; i += batchSize) {
-    const batch = newSlots.slice(i, i + batchSize)
-
-    const { error } = await supabase.from('slots').insert(batch)
-
-    if (error) {
-      console.error('Errore insert batch:', error)
-      return
-    }
+  if (newSlots.length > 0) {
+    await supabase.from('slots').insert(newSlots)
   }
-
-  console.log('Slot inseriti')
 }
 
 // settimana
@@ -118,10 +102,7 @@ export default function CalendarPage() {
       password: passwordInput
     })
 
-    if (error) {
-      alert(error.message)
-      return
-    }
+    if (error) return alert(error.message)
 
     setUser(data.user)
     setEmailInput('')
@@ -133,27 +114,18 @@ export default function CalendarPage() {
     setUser(null)
   }
 
-  // INIT
+  // init
   useEffect(() => {
     const setup = async () => {
-      console.log('INIT START')
-
       const { data: { session } } = await supabase.auth.getSession()
       setUser(session?.user || null)
 
-      await generateFutureSlots(6)
+      await generateFutureSlots(12)
 
-      const { data, error } = await supabase
+      const { data } = await supabase
         .from('slots')
         .select('*')
         .order('start_time')
-
-      if (error) {
-        console.error('Errore fetch slots:', error)
-        return
-      }
-
-      console.log('Slot caricati:', data?.length)
 
       if (data) setSlots(data)
     }
@@ -183,19 +155,16 @@ export default function CalendarPage() {
       .update(formData)
       .eq('id', selectedSlot.id)
 
-    if (error) {
-      alert(error.message)
-      return
+    if (!error) {
+      setSlots(slots.map(s =>
+        s.id === selectedSlot.id ? { ...s, ...formData } : s
+      ))
+
+      setSelectedSlot(null)
     }
-
-    setSlots(slots.map(s =>
-      s.id === selectedSlot.id ? { ...s, ...formData } : s
-    ))
-
-    setSelectedSlot(null)
   }
 
-  // pulisci
+  // pulisci (admin)
   const clearSlot = async (slot: Slot) => {
     const { error } = await supabase
       .from('slots')
@@ -206,16 +175,13 @@ export default function CalendarPage() {
       })
       .eq('id', slot.id)
 
-    if (error) {
-      alert(error.message)
-      return
+    if (!error) {
+      setSlots(slots.map(s =>
+        s.id === slot.id
+          ? { ...s, struttura: null, nome_cognome: null, scadenza: null }
+          : s
+      ))
     }
-
-    setSlots(slots.map(s =>
-      s.id === slot.id
-        ? { ...s, struttura: null, nome_cognome: null, scadenza: null }
-        : s
-    ))
   }
 
   const week = getWeekByIndex(slots, weekIndex)
@@ -250,35 +216,38 @@ export default function CalendarPage() {
       )}
 
       <div style={{ margin: '10px 0' }}>
-        <button onClick={() => setWeekIndex(w => Math.max(w - 1, 0))}>
+        <button
+          className="nav-btn"
+          onClick={() => setWeekIndex(w => Math.max(w - 1, 0))}
+          disabled={weekIndex === 0}
+        >
           ←
         </button>
 
-        <button onClick={() => setWeekIndex(w => w + 1)} style={{ marginLeft: 10 }}>
+        <button
+          className="nav-btn"
+          onClick={() => setWeekIndex(w => w + 1)}
+          style={{ marginLeft: 10 }}
+        >
           →
         </button>
       </div>
 
-      <div>
+      <div className="calendar">
         {week.map((daySlots, dayIndex) => (
-          <div key={dayIndex} style={{ marginBottom: 20 }}>
+          <div key={dayIndex} className="day-column">
 
-            <h3>
+            <div className={`day-header ${dayIndex === 0 ? 'today' : ''}`}>
               {daySlots[0]
                 ? new Date(daySlots[0].start_time).toLocaleDateString()
                 : new Date(Date.now() + (weekIndex * 7 + dayIndex) * 86400000).toLocaleDateString()
               }
-            </h3>
+            </div>
 
             {daySlots.map(slot => (
               <div
                 key={slot.id}
-                style={{
-                  border: '1px solid #ccc',
-                  padding: 10,
-                  marginBottom: 5,
-                  cursor: 'pointer'
-                }}
+                className={`slot ${slot.nome_cognome ? 'booked' : 'free'}`}
                 onClick={() => openForm(slot)}
               >
                 <div>
@@ -287,7 +256,21 @@ export default function CalendarPage() {
                   {new Date(slot.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                 </div>
 
+                {slot.struttura && <div>{slot.struttura}</div>}
                 {slot.nome_cognome && <div>{slot.nome_cognome}</div>}
+                {isAdmin && slot.scadenza && <div>Scadenza: {slot.scadenza}</div>}
+
+                {isAdmin && slot.nome_cognome && (
+                  <button
+                    className="btn btn-secondary"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      clearSlot(slot)
+                    }}
+                  >
+                    Clear
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -333,8 +316,16 @@ export default function CalendarPage() {
             />
 
             <div style={{ marginTop: 10 }}>
-              <button onClick={handleSubmit}>Salva</button>
-              <button onClick={() => setSelectedSlot(null)}>Annulla</button>
+              <button className="btn btn-primary" onClick={handleSubmit}>
+                Salva
+              </button>
+
+              <button
+                className="btn btn-secondary"
+                onClick={() => setSelectedSlot(null)}
+              >
+                Annulla
+              </button>
             </div>
           </div>
         </div>
