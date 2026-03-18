@@ -14,7 +14,7 @@ type Slot = {
 
 const ADMIN_EMAIL = 'admin@agenda.com'
 
-// genera slot futuri
+// ✅ GENERAZIONE SLOT FIX ORA LEGALE
 const generateFutureSlots = async (monthsAhead: number = 6) => {
   const startDate = new Date()
   const endDate = new Date()
@@ -25,7 +25,9 @@ const generateFutureSlots = async (monthsAhead: number = 6) => {
   for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
     for (let h = 8; h < 17; h++) {
       for (let m = 0; m < 60; m += 30) {
-        const start = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate(), h, m))
+
+        // 🔥 QUI LA FIX: ORARIO LOCALE
+        const start = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, m)
         const end = new Date(start.getTime() + 30 * 60000)
 
         slotsToInsert.push({
@@ -93,7 +95,6 @@ export default function CalendarPage() {
 
   const isAdmin = user?.email === ADMIN_EMAIL
 
-  // login
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
 
@@ -114,7 +115,6 @@ export default function CalendarPage() {
     setUser(null)
   }
 
-  // init
   useEffect(() => {
     const setup = async () => {
       const { data: { session } } = await supabase.auth.getSession()
@@ -133,7 +133,6 @@ export default function CalendarPage() {
     setup()
   }, [])
 
-  // apertura popup
   const openForm = (slot: Slot) => {
     if (!isAdmin && slot.nome_cognome) return
 
@@ -146,7 +145,6 @@ export default function CalendarPage() {
     })
   }
 
-  // salva
   const handleSubmit = async () => {
     if (!selectedSlot) return
 
@@ -164,7 +162,6 @@ export default function CalendarPage() {
     }
   }
 
-  // pulisci (admin)
   const clearSlot = async (slot: Slot) => {
     const { error } = await supabase
       .from('slots')
@@ -192,18 +189,8 @@ export default function CalendarPage() {
 
       {!user && (
         <form onSubmit={handleLogin}>
-          <input
-            type="email"
-            placeholder="Email"
-            value={emailInput}
-            onChange={e => setEmailInput(e.target.value)}
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={passwordInput}
-            onChange={e => setPasswordInput(e.target.value)}
-          />
+          <input type="email" placeholder="Email" value={emailInput} onChange={e => setEmailInput(e.target.value)} />
+          <input type="password" placeholder="Password" value={passwordInput} onChange={e => setPasswordInput(e.target.value)} />
           <button type="submit">Login</button>
         </form>
       )}
@@ -216,21 +203,8 @@ export default function CalendarPage() {
       )}
 
       <div style={{ margin: '10px 0' }}>
-        <button
-          className="nav-btn"
-          onClick={() => setWeekIndex(w => Math.max(w - 1, 0))}
-          disabled={weekIndex === 0}
-        >
-          ←
-        </button>
-
-        <button
-          className="nav-btn"
-          onClick={() => setWeekIndex(w => w + 1)}
-          style={{ marginLeft: 10 }}
-        >
-          →
-        </button>
+        <button className="nav-btn" onClick={() => setWeekIndex(w => Math.max(w - 1, 0))} disabled={weekIndex === 0}>←</button>
+        <button className="nav-btn" onClick={() => setWeekIndex(w => w + 1)} style={{ marginLeft: 10 }}>→</button>
       </div>
 
       <div className="calendar">
@@ -297,35 +271,13 @@ export default function CalendarPage() {
           }}>
             <h3>Gestione slot</h3>
 
-            <input
-              placeholder="Nome struttura"
-              value={formData.struttura}
-              onChange={e => setFormData({ ...formData, struttura: e.target.value })}
-            />
-
-            <input
-              placeholder="Nome e cognome"
-              value={formData.nome_cognome}
-              onChange={e => setFormData({ ...formData, nome_cognome: e.target.value })}
-            />
-
-            <input
-              type="date"
-              value={formData.scadenza}
-              onChange={e => setFormData({ ...formData, scadenza: e.target.value })}
-            />
+            <input placeholder="Nome struttura" value={formData.struttura} onChange={e => setFormData({ ...formData, struttura: e.target.value })} />
+            <input placeholder="Nome e cognome" value={formData.nome_cognome} onChange={e => setFormData({ ...formData, nome_cognome: e.target.value })} />
+            <input type="date" value={formData.scadenza} onChange={e => setFormData({ ...formData, scadenza: e.target.value })} />
 
             <div style={{ marginTop: 10 }}>
-              <button className="btn btn-primary" onClick={handleSubmit}>
-                Salva
-              </button>
-
-              <button
-                className="btn btn-secondary"
-                onClick={() => setSelectedSlot(null)}
-              >
-                Annulla
-              </button>
+              <button className="btn btn-primary" onClick={handleSubmit}>Salva</button>
+              <button className="btn btn-secondary" onClick={() => setSelectedSlot(null)}>Annulla</button>
             </div>
           </div>
         </div>
