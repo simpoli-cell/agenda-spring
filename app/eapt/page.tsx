@@ -39,7 +39,7 @@ const generateFutureSlots = async (monthsAhead: number = 6) => {
   }
 
   const { data: existingSlots } = await supabase
-    .from('slots')
+    .from('slots_eapt')
     .select('start_time')
     .gte('start_time', startDate.toISOString())
     .lte('start_time', endDate.toISOString())
@@ -48,7 +48,7 @@ const generateFutureSlots = async (monthsAhead: number = 6) => {
   const newSlots = slotsToInsert.filter(s => !existingSet.has(s.start_time))
 
   if (newSlots.length > 0) {
-    await supabase.from('slots').insert(newSlots)
+    await supabase.from('slots_eapt').insert(newSlots)
   }
 }
 
@@ -123,7 +123,7 @@ export default function CalendarPage() {
       await generateFutureSlots(12)
 
       const { data } = await supabase
-        .from('slots')
+        .from('slots_eapt')
         .select('*')
         .order('start_time')
 
@@ -149,7 +149,7 @@ export default function CalendarPage() {
     if (!selectedSlot) return
 
     const { error } = await supabase
-      .from('slots')
+      .from('slots_eapt')
       .update(formData)
       .eq('id', selectedSlot.id)
 
@@ -164,7 +164,7 @@ export default function CalendarPage() {
 
   const clearSlot = async (slot: Slot) => {
     const { error } = await supabase
-      .from('slots')
+      .from('slots_eapt')
       .update({
         struttura: null,
         nome_cognome: null,
