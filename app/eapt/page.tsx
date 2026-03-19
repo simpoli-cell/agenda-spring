@@ -185,7 +185,7 @@ export default function CalendarPage() {
 
   return (
     <div style={{ padding: 20 }}>
-      <h1>Agenda</h1>
+      <h1>Agenda - EAPT</h1>
 
       {!user && (
         <form onSubmit={handleLogin}>
