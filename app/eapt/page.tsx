@@ -278,7 +278,17 @@ export default function CalendarPage() {
 
             <input placeholder="Nome struttura" value={formData.struttura} onChange={e => setFormData({ ...formData, struttura: e.target.value })} />
             <input placeholder="Nome e cognome" value={formData.nome_cognome} onChange={e => setFormData({ ...formData, nome_cognome: e.target.value })} />
-            <input type="date" value={formData.scadenza} onChange={e => setFormData({ ...formData, scadenza: e.target.value })} />
+            <div style={{ marginTop: 10 }}>
+              <label style={{ display: 'block', marginBottom: 5 }}>
+                Scadenza
+              </label>
+
+              <input
+                type="date"
+                value={formData.scadenza}
+              onChange={e => setFormData({ ...formData, scadenza: e.target.value })}
+              />
+            </div>
 
             <div style={{ marginTop: 10 }}>
               <button className="btn btn-primary" onClick={handleSubmit}>Salva</button>
